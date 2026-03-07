@@ -62,8 +62,8 @@ pipeline{
                             docker push ${ACC_ID}.dkr.ecr.us-east-1.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion}
                         """
                     }
-                    imageURL = "${ACC_ID}.dkr.ecr.us-east-1.amazonaws.com/${PROJECT}/${COMPONENT}"
-                    echo 'Image Url is : ${imageURL}'
+                    //imageURL = "${ACC_ID}.dkr.ecr.us-east-1.amazonaws.com/${PROJECT}/${COMPONENT}"
+                    //echo 'Image Url is : ${imageURL}'
                 }
             }
         }
