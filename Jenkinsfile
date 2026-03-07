@@ -78,8 +78,8 @@ pipeline{
                     build job: 'catalogue-cd', 
                     parameters: [
                         string(name: 'appVersion', value: "${appVersion}"),
+                        string(name: 'deploy_to', value: 'dev')
                         //string(name: 'imageURL', value: "${imageURL}"),
-                        string(name: 'deploy_to', value: dev)
                     ],
                     propagate: false,   // even if SG fails, VPC will not fail
                     wait: false         // VPC doesnot wait for the SG pipeline to complete
