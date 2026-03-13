@@ -120,6 +120,75 @@ pipeline{
                 }
             }
         }
+        stage('Check ECR Vulnerabilities') {
+            steps {
+                script {
+                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
+
+                        // Get digest of the pushed image
+                        def digest = sh(
+                            script: """
+                                aws ecr describe-images \
+                                --repository-name ${PROJECT}/${COMPONENT} \
+                                --image-ids imageTag=${appVersion} \
+                                --query 'imageDetails[0].imageDigest' \
+                                --output text
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Image Digest: ${digest}"
+
+                        // Wait for scan to complete
+                        timeout(time: 2, unit: 'MINUTES') {
+                            waitUntil {
+                                def status = sh(
+                                    script: """
+                                        aws ecr describe-image-scan-findings \
+                                        --repository-name ${PROJECT}/${COMPONENT} \
+                                        --image-id imageDigest=${digest} \
+                                        --query 'imageScanStatus.status' \
+                                        --output text
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+
+                                echo "Scan status: ${status}"
+
+                                return status == "COMPLETE"
+                            }
+                        }
+
+                        // Fetch scan findings
+                        def findings = sh(
+                            script: """
+                                aws ecr describe-image-scan-findings \
+                                --repository-name ${PROJECT}/${COMPONENT} \
+                                --image-id imageDigest=${digest} \
+                                --region ${REGION} \
+                                --output json
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        def json = readJSON text: findings
+                        def counts = json.imageScanFindings.findingSeverityCounts ?: [:]
+
+                        def high = counts.HIGH ?: 0
+                        def critical = counts.CRITICAL ?: 0
+
+                        echo "HIGH vulnerabilities: ${high}"
+                        echo "CRITICAL vulnerabilities: ${critical}"
+
+                        if (high > 0 || critical > 0) {
+                            error(" Pipeline failed due to HIGH/CRITICAL vulnerabilities")
+                        } else {
+                            echo " No HIGH or CRITICAL vulnerabilities found"
+                        }
+                    }
+                }
+            }
+        }
         stage('Trigger Deploy'){
             when {
                 expression {
