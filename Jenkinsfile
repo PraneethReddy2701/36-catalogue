@@ -125,35 +125,42 @@ pipeline{
                 script {
                     withAWS(credentials: 'aws-creds', region: "${REGION}") {
 
-                        // Get latest scanned image digest
+                        // Get digest for the pushed tag
                         def digest = sh(
                             script: """
                                 aws ecr describe-images \
                                 --repository-name ${PROJECT}/${COMPONENT} \
-                                --query 'reverse(sort_by(imageDetails,& imagePushedAt))[?imageScanStatus.status!=null][0].imageDigest' \
+                                --image-ids imageTag=${appVersion} \
+                                --query 'imageDetails[0].imageDigest' \
                                 --output text
                             """,
                             returnStdout: true
                         ).trim()
 
-                        echo "Using scanned digest: ${digest}"
+                        echo "Image digest: ${digest}"
 
-                        // Wait for scan completion
+                        // Wait for scan to appear
                         timeout(time: 2, unit: 'MINUTES') {
                             waitUntil {
-                                def status = sh(
-                                    script: """
-                                        aws ecr describe-image-scan-findings \
-                                        --repository-name ${PROJECT}/${COMPONENT} \
-                                        --image-id imageDigest=${digest} \
-                                        --query 'imageScanStatus.status' \
-                                        --output text
-                                    """,
-                                    returnStdout: true
-                                ).trim()
+                                try {
+                                    def status = sh(
+                                        script: """
+                                            aws ecr describe-image-scan-findings \
+                                            --repository-name ${PROJECT}/${COMPONENT} \
+                                            --image-id imageDigest=${digest} \
+                                            --query 'imageScanStatus.status' \
+                                            --output text
+                                        """,
+                                        returnStdout: true
+                                    ).trim()
 
-                                echo "Scan status: ${status}"
-                                return status == "COMPLETE"
+                                    echo "Scan status: ${status}"
+                                    return status == "COMPLETE"
+                                } catch (Exception e) {
+                                    echo "Scan not started yet, waiting..."
+                                    sleep 5
+                                    return false
+                                }
                             }
                         }
 
