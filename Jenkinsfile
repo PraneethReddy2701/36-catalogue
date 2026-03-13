@@ -125,21 +125,20 @@ pipeline{
                 script {
                     withAWS(credentials: 'aws-creds', region: "${REGION}") {
 
-                        // Get digest of the pushed image
+                        // Get latest scanned image digest
                         def digest = sh(
                             script: """
                                 aws ecr describe-images \
                                 --repository-name ${PROJECT}/${COMPONENT} \
-                                --image-ids imageTag=${appVersion} \
-                                --query 'imageDetails[0].imageDigest' \
+                                --query 'reverse(sort_by(imageDetails,& imagePushedAt))[?imageScanStatus.status!=null][0].imageDigest' \
                                 --output text
                             """,
                             returnStdout: true
                         ).trim()
 
-                        echo "Image Digest: ${digest}"
+                        echo "Using scanned digest: ${digest}"
 
-                        // Wait for scan to complete
+                        // Wait for scan completion
                         timeout(time: 2, unit: 'MINUTES') {
                             waitUntil {
                                 def status = sh(
@@ -154,18 +153,15 @@ pipeline{
                                 ).trim()
 
                                 echo "Scan status: ${status}"
-
                                 return status == "COMPLETE"
                             }
                         }
 
-                        // Fetch scan findings
                         def findings = sh(
                             script: """
                                 aws ecr describe-image-scan-findings \
                                 --repository-name ${PROJECT}/${COMPONENT} \
                                 --image-id imageDigest=${digest} \
-                                --region ${REGION} \
                                 --output json
                             """,
                             returnStdout: true
@@ -181,9 +177,9 @@ pipeline{
                         echo "CRITICAL vulnerabilities: ${critical}"
 
                         if (high > 0 || critical > 0) {
-                            error(" Pipeline failed due to HIGH/CRITICAL vulnerabilities")
+                            error("❌ Pipeline failed due to HIGH/CRITICAL vulnerabilities")
                         } else {
-                            echo " No HIGH or CRITICAL vulnerabilities found"
+                            echo "✅ No HIGH/CRITICAL vulnerabilities found"
                         }
                     }
                 }
