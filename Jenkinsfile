@@ -120,73 +120,35 @@ pipeline{
                 }
             }
         }
-        stage('Check ECR Vulnerabilities') {
+        stage('Check Scan Results') {
             steps {
                 script {
-                    withAWS(credentials: 'aws-creds', region: "${REGION}") {
-
-                        // Get digest for the pushed tag
-                        def digest = sh(
-                            script: """
-                                aws ecr describe-images \
-                                --repository-name ${PROJECT}/${COMPONENT} \
-                                --image-ids imageTag=${appVersion} \
-                                --query 'imageDetails[0].imageDigest' \
-                                --output text
-                            """,
-                            returnStdout: true
-                        ).trim()
-
-                        echo "Image digest: ${digest}"
-
-                        // Wait for scan to appear
-                        timeout(time: 2, unit: 'MINUTES') {
-                            waitUntil {
-                                try {
-                                    def status = sh(
-                                        script: """
-                                            aws ecr describe-image-scan-findings \
-                                            --repository-name ${PROJECT}/${COMPONENT} \
-                                            --image-id imageDigest=${digest} \
-                                            --query 'imageScanStatus.status' \
-                                            --output text
-                                        """,
-                                        returnStdout: true
-                                    ).trim()
-
-                                    echo "Scan status: ${status}"
-                                    return status == "COMPLETE"
-                                } catch (Exception e) {
-                                    echo "Scan not started yet, waiting..."
-                                    sleep 5
-                                    return false
-                                }
-                            }
-                        }
-
+                    withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                    // Fetch scan findings
                         def findings = sh(
                             script: """
                                 aws ecr describe-image-scan-findings \
                                 --repository-name ${PROJECT}/${COMPONENT} \
-                                --image-id imageDigest=${digest} \
+                                --image-id imageTag=${appVersion} \
+                                --region ${REGION} \
                                 --output json
                             """,
                             returnStdout: true
                         ).trim()
 
+                        // Parse JSON
                         def json = readJSON text: findings
-                        def counts = json.imageScanFindings.findingSeverityCounts ?: [:]
 
-                        def high = counts.HIGH ?: 0
-                        def critical = counts.CRITICAL ?: 0
+                        def highCritical = json.imageScanFindings.findings.findAll {
+                            it.severity == "HIGH" || it.severity == "CRITICAL"
+                        }
 
-                        echo "HIGH vulnerabilities: ${high}"
-                        echo "CRITICAL vulnerabilities: ${critical}"
-
-                        if (high > 0 || critical > 0) {
-                            error("❌ Pipeline failed due to HIGH/CRITICAL vulnerabilities")
+                        if (highCritical.size() > 0) {
+                            echo "❌ Found ${highCritical.size()} HIGH/CRITICAL vulnerabilities!"
+                            currentBuild.result = 'FAILURE'
+                            error("Build failed due to vulnerabilities")
                         } else {
-                            echo "✅ No HIGH/CRITICAL vulnerabilities found"
+                            echo "✅ No HIGH/CRITICAL vulnerabilities found."
                         }
                     }
                 }
