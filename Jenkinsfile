@@ -63,6 +63,14 @@ pipeline{
                 }
             }
         }
+        // Enable webhook in sonarqube server and wait for sonarscanner to send the results to jenkins
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') { // Optional: adds a timeout to prevent indefinite waiting
+                    waitForQualityGate abortPipeline: true 
+                }
+            }
+        }
         stage('Docker Build'){
             steps{
                 script{
