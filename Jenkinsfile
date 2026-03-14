@@ -63,6 +63,7 @@ pipeline{
                 }
             }
         }
+        
         // Enable webhook in sonarqube server and wait for sonarscanner to send the results to jenkins
         stage('Quality Gate') {
             steps {
@@ -105,7 +106,7 @@ pipeline{
                 }
             }
         }
-/*         stage('Docker Build'){
+        stage('Docker Build'){
             steps{
                 script{
                     withAWS(credentials: 'aws-creds', region: 'us-east-1') {
@@ -115,30 +116,10 @@ pipeline{
                             docker push ${ACC_ID}.dkr.ecr.us-east-1.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion}
                         """
                     }
-                    //imageURL = "${ACC_ID}.dkr.ecr.us-east-1.amazonaws.com/${PROJECT}/${COMPONENT}"
-                    //echo 'Image Url is : ${imageURL}'
-                }
-            }
-        } */
-        stage('Docker Build'){
-            steps{
-                script{
-                    withAWS(credentials: 'aws-creds', region: 'us-east-1') {
-                        sh """
-                            aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com
-
-                            docker build \
-                            --platform linux/amd64 \
-                            --provenance=false \
-                            -t ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion} .
-
-                            docker push ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion}
-                        """
-                    }
                 }
             }
         }
-/*         stage('Check Scan Results') {
+        stage('Check Scan Results') {
             steps {
                 script {
                     withAWS(credentials: 'aws-creds', region: 'us-east-1') {
@@ -171,50 +152,60 @@ pipeline{
                     }
                 }
             }
-        } */
-        stage('Check Scan Results') {
+        }
+/*      stage('Docker Build'){
+            steps{
+                script{
+                    withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                        sh """
+                            aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com
+
+                            docker build \
+                            --platform linux/amd64 \
+                            --provenance=false \
+                            -t ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion} .
+
+                            docker push ${ACC_ID}.dkr.ecr.${REGION}.amazonaws.com/${PROJECT}/${COMPONENT}:${appVersion}
+                        """
+                    }
+                }
+            }
+        } */        
+/*         stage('Check Scan Results') {
             steps {
                 script {
                     withAWS(credentials: 'aws-creds', region: "${REGION}") {
 
-                        timeout(time: 2, unit: 'MINUTES') {
-                            waitUntil {
-                                try {
-                                    def result = sh(
-                                        script: """
-                                            aws ecr describe-image-scan-findings \
-                                            --repository-name ${PROJECT}/${COMPONENT} \
-                                            --image-id imageTag=${appVersion} \
-                                            --region ${REGION} \
-                                            --output json
-                                        """,
-                                        returnStdout: true
-                                    ).trim()
+                        echo "Waiting for ECR scan to complete..."
+                        sleep 45
 
-                                    def json = readJSON text: result
+                        def findings = sh(
+                            script: """
+                            aws ecr describe-image-scan-findings \
+                            --repository-name ${PROJECT}/${COMPONENT} \
+                            --image-id imageTag=${appVersion} \
+                            --region ${REGION} \
+                            --output json 2>/dev/null || echo '{}'
+                            """,
+                            returnStdout: true
+                        ).trim()
 
-                                    def highCritical = json.imageScanFindings.findings.findAll {
-                                        it.severity == "HIGH" || it.severity == "CRITICAL"
-                                    }
+                        def json = readJSON text: findings
 
-                                    if (highCritical.size() > 0) {
-                                        error("❌ Found ${highCritical.size()} HIGH/CRITICAL vulnerabilities!")
-                                    }
+                        def highCritical = json?.imageScanFindings?.findings?.findAll {
+                            it.severity == "HIGH" || it.severity == "CRITICAL"
+                        } ?: []
 
-                                    echo "✅ No HIGH/CRITICAL vulnerabilities found."
-                                    return true
-
-                                } catch (Exception e) {
-                                    echo "Scan not ready yet... waiting"
-                                    sleep 10
-                                    return false
-                                }
-                            }
+                        if (highCritical.size() > 0) {
+                            echo "❌ Found ${highCritical.size()} HIGH/CRITICAL vulnerabilities!"
+                            error("Build failed due to vulnerabilities")
+                        } else {
+                            echo "✅ No HIGH/CRITICAL vulnerabilities found."
                         }
                     }
                 }
             }
-        }
+        } */
         stage('Trigger Deploy'){
             when {
                 expression {
