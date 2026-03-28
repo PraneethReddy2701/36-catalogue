@@ -5,7 +5,13 @@ def configMap = [
     component : "catalogue"
 ]
 
-nodejsEKSPipeline.call(configMap)
+if( !env.BRANCH_NAME.equalsIgnoreCase('main')){
+    nodejsEKSPipeline.call(configMap)
+}
+else {
+    echo "Proceed with PROD process"
+}
+
 
 /* @Library('jenkins-shared-library')_ 
 
