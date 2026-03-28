@@ -6,8 +6,6 @@ def configMap = [
 ]
 
 nodejsEKSPipeline.call(configMap)
--
-
 
 /* @Library('jenkins-shared-library')_ 
 
